@@ -1,0 +1,50 @@
+#请注意，上述脚本假定 CSV 文件具有以下格式：
+#Email,SIP
+#user1@contoso.com,user1@contoso.com
+#user2@contoso.com,user2@contoso.com
+#user3@contoso.com,user3@contoso.com
+
+
+# CSV 文件路径
+$csvFilePath = "c:\proxyaddress.csv"
+
+# OU 路径
+$ouPath = "OU=TEST,DC=contoso,DC=com"
+
+# 导入 CSV 文件
+$users = Import-Csv -Path $csvFilePath
+
+# 循环遍历每个用户
+foreach ($user in $users) {
+    # 获取用户的邮箱地址和 SIP 地址
+    $email = $user.Email
+    $sip = $user.SIP
+    
+    # 检查用户是否存在
+    if (Get-ADUser -Filter {EmailAddress -eq $email}) {
+        # 获取用户对象
+        $adUser = Get-ADUser -Filter {EmailAddress -eq $email}
+        
+        # 检查用户是否已在正确的 OU 中
+        if ($adUser.DistinguishedName -notlike "*$ouPath*") {
+            # 移动用户到正确的 OU 中
+            Move-ADObject -Identity $adUser.DistinguishedName -TargetPath $ouPath
+        }
+        
+        # 检查 proxyAddresses 属性是否存在
+        if (!$adUser.proxyAddresses) {
+            # 如果不存在，则创建一个空数组
+            $adUser.proxyAddresses = @()
+        }
+        
+        # 添加 SMTP 地址和 SIP 地址到 proxyAddresses 属性
+        $adUser.proxyAddresses += "SMTP:$email"
+        $adUser.proxyAddresses += "SIP:$sip"
+        
+        # 更新用户对象
+        Set-ADUser -Instance $adUser
+    }
+    else {
+        Write-Error "用户 $email 不存在！"
+    }
+}
